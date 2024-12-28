@@ -1,3 +1,7 @@
+import 'dart:collection';
+
+import 'package:flutter/foundation.dart';
+
 class BTree<K extends Comparable> {
   final int m;
   final int _mergeThreshold;
@@ -36,6 +40,10 @@ class BTree<K extends Comparable> {
     return _remove(root, key);
   }
 
+  void clear() {
+    root = BNode<K>();
+  }
+
   bool get isEmpty => root.keys.isEmpty;
   bool get isNotEmpty => !isEmpty;
 
@@ -56,6 +64,37 @@ class BTree<K extends Comparable> {
         return node.keys.last;
       }
       node = node.children.last;
+    }
+  }
+
+  @override
+  int get hashCode => Object.hash(m, root);
+
+  @override
+  bool operator ==(Object other) {
+    return other is BTree<K> && m == other.m && root == other.root;
+  }
+
+  Iterable<BNode<K>> dfs() {
+    return _dfs(root);
+  }
+
+  Iterable<BNode<K>> _dfs(BNode<K> node) sync* {
+    yield node;
+    for (final child in node.children) {
+      yield* _dfs(child);
+    }
+  }
+
+  Iterable<BNode<K>> bfs() sync* {
+    final queue = Queue<BNode<K>>();
+    queue.add(root);
+    yield root;
+
+    while (queue.isNotEmpty) {
+      final node = queue.removeFirst();
+      queue.addAll(node.children);
+      yield* node.children;
     }
   }
 
@@ -310,14 +349,35 @@ class BNode<K extends Comparable> {
 
   bool get isLeaf => children.isEmpty;
   bool get isRoot => parent == null;
+  int get depth {
+    var p = parent;
+    int d = 0;
+    while (true) {
+      if (p == null) break;
+      d++;
+      p = p.parent;
+    }
+    return d;
+  }
 
   int _indexOf(K key) {
     return BUtils.binarySearch(keys, key);
   }
 
   @override
+  int get hashCode => Object.hash(parent, keys, children);
+
+  @override
+  bool operator ==(Object other) {
+    return other is BNode<K> &&
+        parent == other.parent &&
+        listEquals(keys, other.keys) &&
+        listEquals(children, other.children);
+  }
+
+  @override
   String toString() {
-    return keys.join(",");
+    return keys.join(":");
   }
 }
 

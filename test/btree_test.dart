@@ -2,6 +2,47 @@ import 'package:btree/btree/btree.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('bnode ==', () {
+    final a = BNode<int>();
+    final b = BNode<int>();
+
+    expect(a, b);
+  });
+
+  test('bnode !=', () {
+    final a = BNode<int>();
+    final b = BNode<int>(parent: a);
+
+    expect(a, isNot(b));
+  });
+
+  test('btree ==', () {
+    final t1 = BTree<int>(m: 3);
+    final t2 = BTree<int>(m: 3);
+    t1.put(1);
+    t2.put(1);
+
+    expect(t1, t2);
+  });
+  test('btree !=', () {
+    final t1 = BTree<int>(m: 3);
+    final t2 = BTree<int>(m: 3);
+    t1.put(1);
+    t2.put(1);
+    t2.put(2);
+
+    expect(t1, isNot(t2));
+  });
+
+  test('btree not same m', () {
+    final t1 = BTree<int>(m: 3);
+    final t2 = BTree<int>(m: 4);
+    t1.put(1);
+    t2.put(1);
+
+    expect(t1, isNot(t2));
+  });
+
   test('key size 4', () {
     final tree = BTree<int>(m: 5);
     tree.put(150);
@@ -102,10 +143,12 @@ void main() {
     }
     expect(tree.level, 1);
     expect(tree.root.keys, [2, 5, 8]);
+    expect(tree.root.depth, 0);
     expect(tree.root.children[0].keys, [0, 1]);
     expect(tree.root.children[1].keys, [3, 4]);
     expect(tree.root.children[2].keys, [6, 7]);
     expect(tree.root.children[3].keys, [9, 10]);
+    expect(tree.root.children[3].depth, 1);
 
     for (int i = 11; i <= 20; i++) {
       tree.put(i);
@@ -122,6 +165,7 @@ void main() {
     expect(tree.root.children[1].children[1].keys, [12, 13]);
     expect(tree.root.children[1].children[2].keys, [15, 16]);
     expect(tree.root.children[1].children[3].keys, [18, 19, 20]);
+    expect(tree.root.children[1].children[3].depth, 2);
     expect(tree.root.children.every((e) => e.parent == tree.root), true);
     expect(
       tree.root.children[0].children
@@ -290,6 +334,11 @@ void main() {
     test("search range 100", () {
       final res = tree.search(min: 100, max: 100);
       expect(res, [100]);
+    });
+
+    test("clear", () {
+      tree.clear();
+      expect(tree.isEmpty, true);
     });
   });
 }
