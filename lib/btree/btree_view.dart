@@ -3,6 +3,11 @@ import 'dart:math';
 import 'package:btree/btree/btree.dart';
 import 'package:flutter/material.dart';
 
+const _kNodeVerticalSpace = 56.0;
+const _kNodeHorizontalSpace = 4.0;
+const _kKeyHorizontalMargin = 2.0;
+const _kNodeHeight = 20.0;
+
 class BTreeView extends StatefulWidget {
   const BTreeView({super.key});
 
@@ -24,6 +29,12 @@ class _BTreeViewState extends State<BTreeView> {
   void _putKey(int key) {
     latest = key;
     tree.put(key);
+    setState(() {});
+  }
+
+  void _delKey(int key) {
+    latest = key;
+    tree.remove(key);
     setState(() {});
   }
 
@@ -51,29 +62,51 @@ class _BTreeViewState extends State<BTreeView> {
       ),
       body: Column(
         children: [
-          Text("최대 자식 수: ${tree.m}"),
-          Text("최대 키 수: ${tree.m - 1}"),
           Wrap(
+            alignment: WrapAlignment.center,
             spacing: 10,
             children: [
-              FilledButton(
-                onPressed: () async {
-                  final key = await showIntegerDialog(
-                    context,
-                    title: Text("키 입력"),
-                    label: Text("키를 입력하세요."),
-                  );
-                  if (key == null) return;
-                  _putKey(key);
-                },
-                child: Text("지정 키 추가"),
+              Column(
+                children: [
+                  Text("최대 자식 수: ${tree.m}"),
+                  Text("최대 키 수: ${tree.m - 1}"),
+                ],
               ),
-              FilledButton(
-                onPressed: () {
-                  final key = random.nextInt(1000);
-                  _putKey(key);
-                },
-                child: Text("랜덤 키 추가"),
+              Wrap(
+                spacing: 10,
+                children: [
+                  FilledButton(
+                    onPressed: () async {
+                      final key = await showIntegerDialog(
+                        context,
+                        title: Text("키 입력"),
+                        label: Text("키를 입력하세요."),
+                      );
+                      if (key == null) return;
+                      _putKey(key);
+                    },
+                    child: Text("키 추가"),
+                  ),
+                  FilledButton(
+                    onPressed: () async {
+                      final key = await showIntegerDialog(
+                        context,
+                        title: Text("키 입력"),
+                        label: Text("키를 입력하세요."),
+                      );
+                      if (key == null) return;
+                      _delKey(key);
+                    },
+                    child: Text("키 삭제"),
+                  ),
+                  FilledButton(
+                    onPressed: () {
+                      final key = random.nextInt(1000);
+                      _putKey(key);
+                    },
+                    child: Text("랜덤 추가"),
+                  ),
+                ],
               ),
             ],
           ),
@@ -84,8 +117,14 @@ class _BTreeViewState extends State<BTreeView> {
               height: double.infinity,
               child: tree.isEmpty
                   ? Center(child: Text("B-Tree가 비었습니다."))
-                  : CustomPaint(
-                      painter: BTreeViewPainter(tree, latest: latest),
+                  : SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: SizedBox(
+                        width: 2000,
+                        child: CustomPaint(
+                          painter: BTreeViewPainter(tree, latest: latest),
+                        ),
+                      ),
                     ),
             ),
           ),
@@ -170,42 +209,130 @@ class BTreeViewPainter extends CustomPainter {
 
   BTreeViewPainter(this.tree, {this.latest});
 
-  static final _paint = Paint()..color = Colors.red;
-  static final _paint2 = Paint()..color = Colors.blue;
+  static final _paint = Paint()
+    ..color = Colors.red
+    ..isAntiAlias = false;
+  static final _paint2 = Paint()
+    ..color = Colors.blue
+    ..isAntiAlias = false;
   static final _stroke = Paint()
     ..color = Colors.black
-    ..style = PaintingStyle.stroke;
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 1.0;
   static final _textPainter = TextPainter(
     textDirection: TextDirection.ltr,
   );
 
+  final _childrenRect = <BNode<int>, Rect>{};
+  final _nodeRect = <BNode<int>, Rect>{};
+
   @override
   void paint(Canvas canvas, Size size) {
     if (tree.isEmpty) return;
-    int depth = 0;
-    canvas.save();
-    for (final node in tree.bfs()) {
-      final d = node.depth;
-      if (depth != d) {
-        depth = d;
-        canvas.restore();
-        canvas.save();
-        canvas.translate(0, depth * 28);
-      }
-      for (final key in node.keys) {
-        _textPainter.text = TextSpan(text: key.toString());
-        _textPainter.textAlign = TextAlign.center;
-        _textPainter.layout();
 
-        final size = Offset(0, 0) & Size(_textPainter.width, 20);
-        canvas.drawRect(size, key == latest ? _paint2 : _paint);
-        canvas.drawRect(size, _stroke);
-        _textPainter.paint(canvas, Offset.zero);
-        canvas.translate(_textPainter.width, 0);
-      }
-      canvas.translate(4, 0);
+    _childrenRect.clear();
+    _nodeRect.clear();
+
+    var nodesByDepth = <int, List<BNode<int>>>{};
+    for (final node in tree.bfs()) {
+      nodesByDepth.putIfAbsent(node.depth, () => []).add(node);
     }
-    canvas.restore();
+    for (int i = tree.level; i >= 0; i--) {
+      final nodes = nodesByDepth[i]!;
+      final childrenByParent = <BNode<int>?, List<BNode<int>>>{};
+      for (final node in nodes) {
+        childrenByParent.putIfAbsent(node.parent, () => []).add(node);
+      }
+      var offset = Offset(0, i * _kNodeVerticalSpace);
+      for (final e in childrenByParent.entries) {
+        final bound = _drawNodes(canvas, e.value, offset);
+        final parent = e.key;
+        if (parent != null) {
+          _childrenRect[parent] = bound;
+        }
+        offset += Offset(bound.width + _kNodeHorizontalSpace, 0);
+      }
+    }
+
+    for (final node in tree.bfs()) {
+      _drawLink(canvas, node);
+    }
+  }
+
+  void _drawLink(Canvas canvas, BNode<int> node) {
+    final nodeRect = _nodeRect[node]!;
+    for (final child in node.children) {
+      final bound = _nodeRect[child]!;
+      canvas.drawLine(
+        nodeRect.bottomCenter,
+        bound.topCenter,
+        _stroke,
+      );
+    }
+  }
+
+  Rect _drawNodes(Canvas canvas, List<BNode<int>> nodes, Offset offset) {
+    var width = 0.0;
+    Rect? bound;
+    for (final node in nodes) {
+      final childrenBound = _childrenRect[node];
+      var origin = offset + Offset(width, 0);
+      if (childrenBound != null) {
+        final nodeWidth = _widthNode(node);
+        origin += Offset(childrenBound.width - nodeWidth, 0) / 2;
+      }
+      var nodeBound = _drawNode(canvas, node, origin);
+      if (childrenBound != null) {
+        nodeBound = nodeBound.expandToInclude(childrenBound);
+        nodeBound =
+            nodeBound.topLeft & Size(nodeBound.width, childrenBound.height);
+      }
+      if (bound != null) {
+        bound = bound.expandToInclude(nodeBound);
+      } else {
+        bound = nodeBound;
+      }
+      width += nodeBound.width + _kNodeHorizontalSpace;
+    }
+    return bound!;
+  }
+
+  Rect _drawNode(Canvas canvas, BNode<int> node, Offset offset) {
+    final pad = _kKeyHorizontalMargin * 2;
+    var width = 0.0;
+    final height = _kNodeHeight;
+    final textStyle = TextStyle(color: Colors.white);
+    for (final key in node.keys) {
+      _textPainter.text = TextSpan(
+        text: key.toString(),
+        style: textStyle,
+      );
+      _textPainter.layout();
+
+      final origin = (offset + Offset(width, 0));
+      final size = Size(_textPainter.width + pad, height);
+      final rect = origin & size;
+      canvas.drawRect(rect, key == latest ? _paint2 : _paint);
+      canvas.drawRect(rect, _stroke);
+      _textPainter.paint(
+          canvas,
+          (offset +
+              Offset(width + pad / 2, (height - _textPainter.height) / 2)));
+      width += _textPainter.width + pad;
+    }
+    final bound = offset & Size(width, height);
+    _nodeRect[node] = bound;
+    return bound;
+  }
+
+  double _widthNode(BNode<int> node) {
+    var width = 0.0;
+    for (final key in node.keys) {
+      _textPainter.text = TextSpan(text: key.toString());
+      _textPainter.layout();
+      width += _textPainter.width;
+    }
+    return width;
   }
 
   @override
